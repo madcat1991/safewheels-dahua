@@ -42,6 +42,25 @@ The server will start on `http://<your-server-ip>:7070`
 - `POST /NotificationInfo/TollgateInfo`: Receives ANPR notifications
 - `POST /NotificationInfo/KeepAlive`: Handles camera heartbeat messages
 
+## Image Storage
+
+Vehicle images are automatically saved with the following structure:
+
+```
+vehicle_images/
+├── 2024-02-20/
+│   ├── 14-30-45.123456_in_ABC123.jpg
+│   └── 14-35-22.654321_out_XYZ789.jpg
+└── 2024-02-21/
+    └── 09-15-33.987654_in_DEF456.jpg
+```
+
+Filename format: `HH-MM-SS.μμμμμμ_direction_plate.jpg`
+- `HH-MM-SS`: Hours, minutes, seconds
+- `μμμμμμ`: Microseconds for unique identification
+- `direction`: Vehicle direction (in/out)
+- `plate`: License plate number
+
 ## Dahua Camera Configuration
 
 Configure your Dahua camera with these settings:
@@ -51,7 +70,7 @@ Configure your Dahua camera with these settings:
 3. Configure Platform Server: `http://<your-server-ip>:7070`
 4. Set Heartbeat Interface to: `/NotificationInfo/KeepAlive`
 5. Set ANPR Info Interface to: `/NotificationInfo/TollgateInfo`
-6. Set Authentication Username to match your `.env` file
+6. Set Authentication Username and Password to match your `.env` file
 7. Enable the following data types:
    - ANPR Info with:
      - Plate Number
@@ -63,6 +82,9 @@ Configure your Dahua camera with these settings:
      - Location
      - Accuracy
      - Vehicle in Blocklist
+8. Under Picture settings:
+   - Enable "Vehicle Body Cutout"
+   - Set Encoding Format to UTF8
 
 ## Authentication
 
@@ -71,19 +93,6 @@ The server uses Digest authentication, which is the standard authentication meth
 1. Set the username and password in your `.env` file
 2. Configure the same username and password in the camera's web interface
 3. The camera will handle the Digest authentication headers automatically
-
-## Logging
-
-Logs are written to stdout with the following format:
-```
-timestamp - logger_name - level - message
-```
-
-The server logs:
-- All authentication attempts
-- Received ANPR notifications
-- Camera heartbeat messages
-- Any errors or issues
 
 ## Testing
 
@@ -95,10 +104,13 @@ curl -v --digest -u "your_username:your_password" \
   -X POST http://<your-server-ip>:7070/NotificationInfo/TollgateInfo \
   -H "Content-Type: application/json" \
   -d '{
-    "plate_number": "ABC123",
-    "vehicle_color": "white",
-    "vehicle_type": "car",
-    "capture_time": "2024-01-01T00:00:00Z"
+    "vehicle_info": {
+      "plate_number": "ABC123",
+      "vehicle_color": "white",
+      "vehicle_type": "car",
+      "driving_direction": "east"
+    },
+    "vehicle_body_image": "<base64-encoded-image-data>"
   }'
 ```
 
@@ -123,3 +135,17 @@ Expected responses:
 - Success: HTTP 200 with JSON response containing "status": "success"
 - Auth failure: HTTP 401 Unauthorized
 - Error: HTTP 500 with error details
+
+## Logging
+
+Logs are written to stdout with the following format:
+```
+timestamp - logger_name - level - message
+```
+
+The server logs:
+- All authentication attempts
+- Received ANPR notifications with vehicle data
+- Image save operations with paths
+- Camera heartbeat messages
+- Any errors or issues
