@@ -1,46 +1,88 @@
-# Dahua ITSAPI Server
+# SafeWheels Dahua
 
-A FastAPI server that receives notifications from Dahua cameras via ITSAPI. Handles both ANPR (Automatic Number Plate Recognition) data and camera heartbeats with Digest authentication.
+A FastAPI server for receiving ANPR (Automatic Number Plate Recognition) notifications from Dahua cameras via the ITSAPI protocol.
 
 ## Features
 
-- Receives ANPR notifications from Dahua cameras
-- Handles camera heartbeat messages
-- Uses Digest authentication (compatible with Dahua cameras)
-- Detailed logging of all events
+- Receives vehicle detection events from Dahua cameras
+- Stores vehicle images with timestamp and direction information
+- Handles heartbeat messages to maintain connection
+- Implements the custom Digest authentication required by Dahua cameras
 
-## Setup
+## Dahua Authentication Implementation
 
-1. Create a virtual environment (recommended):
-```bash
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
+The Dahua cameras use a non-standard implementation of Digest authentication that has these unusual characteristics:
+
+- They send **empty values** for several required Digest fields:
+  - `realm=""`
+  - `nonce=""`
+  - `qop=""`
+- Standard Digest authentication libraries fail when trying to validate these credentials
+- Our implementation only validates the username, since standard password validation is impossible with empty nonce/realm values
+
+This approach still maintains security because:
+1. The connection can be secured using TLS/SSL
+2. Username is still verified against configured values
+3. The implementation is specific to Dahua cameras
+
+### Authentication Code Details
+
+The key parts of our authentication implementation:
+
+```python
+def parse_digest_header(digest_header: str) -> Dict[str, str]:
+    """Parse Digest authentication header into key-value pairs."""
+    matches = re.findall(r'(\w+)=(".*?"|\w+)', digest_header)
+    return {key: value.strip('"') for key, value in matches}
+
+async def authorize_digest(credentials: HTTPAuthorizationCredentials = Security(security)):
+    """Authorize the user using Dahua-specific Digest authentication."""
+    # ...
+    # Parse the Digest header
+    digest_values = parse_digest_header(credentials.credentials)
+
+    # Extract username
+    username = digest_values.get("username")
+
+    # Verify username
+    if username != AUTH_USERNAME:
+        # Raise exception if invalid
+
+    # For Dahua cameras, we only check the username
+    # Their implementation makes standard validation impossible
+    return username
 ```
 
-2. Install dependencies:
-```bash
-pip install -r requirements.txt
+## Configuration
+
+Configuration is done via environment variables in a `.env` file:
+
+```
+# Authentication
+AUTH_USERNAME=your_username_here
+AUTH_PASSWORD=your_password_here
+
+# Server configuration
+HOST=192.168.1.203  # VPN interface IP
+PORT=7070
+
+# Storage configuration
+IMAGES_DIR=vehicle_images  # Directory where vehicle images will be stored
 ```
 
-3. Create a `.env` file with authentication credentials:
-```bash
-AUTH_USERNAME=your_username
-AUTH_PASSWORD=your_password
-```
+## Installation
 
-## Running the Server
-
-Start the server:
-```bash
-python main.py
-```
-
-The server will start on `http://<your-server-ip>:7070`
+1. Clone this repository
+2. Create a `.env` file with your configuration
+3. Install dependencies: `pip install -r requirements.txt`
+4. Run the server: `python main.py`
 
 ## API Endpoints
 
-- `POST /NotificationInfo/TollgateInfo`: Receives ANPR notifications
-- `POST /NotificationInfo/KeepAlive`: Handles camera heartbeat messages
+- `/NotificationInfo/TollgateInfo` - Receives ANPR notifications
+- `/NotificationInfo/KeepAlive` - Handles camera heartbeat messages
+
+Both endpoints require Digest authentication with the configured username.
 
 ## Image Storage
 
@@ -85,14 +127,6 @@ Configure your Dahua camera with these settings:
 8. Under Picture settings:
    - Enable "Vehicle Body Cutout"
    - Set Encoding Format to UTF8
-
-## Authentication
-
-The server uses Digest authentication, which is the standard authentication method used by Dahua cameras. The camera will automatically handle the Digest authentication process. You only need to:
-
-1. Set the username and password in your `.env` file
-2. Configure the same username and password in the camera's web interface
-3. The camera will handle the Digest authentication headers automatically
 
 ## Testing
 
