@@ -2,8 +2,9 @@
 FastAPI server that receives notifications from Dahua cameras via ITSAPI.
 Handles ANPR notifications and heartbeat messages with Digest authentication.
 """
-from fastapi import FastAPI, Request, Depends, HTTPException, status
+from fastapi import FastAPI, Request, Depends, HTTPException, status, Security
 from fastapi.responses import JSONResponse
+from fastapi.security import HTTPDigest, HTTPAuthorizationCredentials
 from pydantic import BaseModel
 from typing import Optional
 import logging
@@ -36,23 +37,17 @@ IMAGES_DIR = Path("vehicle_images")
 IMAGES_DIR.mkdir(exist_ok=True)
 
 app = FastAPI(title="Dahua ITSAPI Server")
+security = HTTPDigest()
 
 
-async def verify_digest_auth(request: Request):
-    """Verify Digest authentication from Dahua camera."""
-    auth_header = request.headers.get('Authorization')
-
-    if not auth_header or not auth_header.startswith('Digest '):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Digest authentication required",
-            headers={"WWW-Authenticate": 'Digest realm="dahua_itsapi"'},
-        )
-
+async def get_current_user(credentials: HTTPAuthorizationCredentials = Security(security)) -> dict:
+    """Validate Digest authentication credentials."""
     try:
-        # Parse Digest auth parameters
+        # Extract username from Digest auth
+        auth_str = credentials.credentials
         auth_params = {}
-        auth_str = auth_header[7:]  # Skip 'Digest '
+
+        # Parse the comma-separated parameters
         for param in auth_str.split(','):
             if '=' not in param:
                 continue
@@ -60,38 +55,23 @@ async def verify_digest_auth(request: Request):
             auth_params[key.strip()] = value.strip().strip('"')
 
         username = auth_params.get('username')
+
         if username != AUTH_USERNAME:
             logger.warning(f"Invalid username: {username}")
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid credentials",
-                headers={"WWW-Authenticate": 'Digest realm="dahua_itsapi"'},
+                detail="Invalid credentials"
             )
 
         logger.info(f"Authenticated request from: {username}")
         return {"username": username}
 
     except Exception as e:
-        logger.error(f"Error processing Digest auth: {str(e)}")
+        logger.error(f"Authentication error: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid Digest authentication",
-            headers={"WWW-Authenticate": 'Digest realm="dahua_itsapi"'},
+            detail="Authentication failed"
         )
-
-
-class VehicleInfo(BaseModel):
-    """Model for ANPR vehicle information."""
-    plate_number: Optional[str] = None
-    vehicle_color: Optional[str] = None
-    vehicle_logo: Optional[str] = None
-    vehicle_type: Optional[str] = None
-    driving_direction: Optional[str] = None
-    capture_time: Optional[str] = None
-    location: Optional[str] = None
-    accuracy: Optional[float] = None
-    in_blocklist: Optional[bool] = None
-    vehicle_body_image: Optional[str] = None  # Base64 encoded image
 
 
 async def save_vehicle_image(
@@ -123,13 +103,30 @@ async def save_vehicle_image(
         return None
 
 
+class VehicleInfo(BaseModel):
+    """Model for ANPR vehicle information."""
+    plate_number: Optional[str] = None
+    vehicle_color: Optional[str] = None
+    vehicle_logo: Optional[str] = None
+    vehicle_type: Optional[str] = None
+    driving_direction: Optional[str] = None
+    capture_time: Optional[str] = None
+    location: Optional[str] = None
+    accuracy: Optional[float] = None
+    in_blocklist: Optional[bool] = None
+    vehicle_body_image: Optional[str] = None  # Base64 encoded image
+
+
 @app.post("/NotificationInfo/TollgateInfo")
-async def handle_anpr_notification(request: Request, auth=Depends(verify_digest_auth)):
+async def handle_anpr_notification(
+    request: Request,
+    current_user: dict = Depends(get_current_user)
+):
     """Handle ANPR notifications from Dahua cameras."""
     try:
         body = await request.body()
         notification_data = json.loads(body)
-        logger.info(f"Received ANPR notification from {auth['username']}: {notification_data}")
+        logger.info(f"Received ANPR notification from {current_user['username']}: {notification_data}")
 
         # Extract vehicle information
         vehicle_info = notification_data.get('vehicle_info', {})
@@ -175,12 +172,15 @@ async def handle_anpr_notification(request: Request, auth=Depends(verify_digest_
 
 
 @app.post("/NotificationInfo/KeepAlive")
-async def handle_heartbeat(request: Request, auth=Depends(verify_digest_auth)):
+async def handle_heartbeat(
+    request: Request,
+    current_user: dict = Depends(get_current_user)
+):
     """Handle camera heartbeat messages."""
     try:
         body = await request.body()
         heartbeat_data = json.loads(body)
-        logger.info(f"Received heartbeat from {auth['username']}: {heartbeat_data}")
+        logger.info(f"Received heartbeat from {current_user['username']}: {heartbeat_data}")
 
         return JSONResponse(
             content={
