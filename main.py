@@ -42,47 +42,65 @@ IMAGES_DIR.mkdir(exist_ok=True)
 app = FastAPI(title="Dahua ITSAPI Server")
 
 
-async def save_vehicle_image(
-        plate_number: str,
-        image_data: str,
-        timestamp: datetime,
-        direction: str = "unknown"
-        ) -> str:
-    """Save the vehicle body image to disk."""
-    try:
-        # Create directory for this day
-        date_dir = IMAGES_DIR / timestamp.strftime("%Y-%m-%d")
-        date_dir.mkdir(exist_ok=True)
-
-        # Create filename with timestamp (including microseconds), direction and plate number
-        time_str = timestamp.strftime('%H-%M-%S.%f')
-        filename = f"{time_str}_{direction}_{plate_number}.jpg"
-        file_path = date_dir / filename
-
-        # Decode and save the image
-        image_bytes = base64.b64decode(image_data)
-        with open(file_path, 'wb') as f:
-            f.write(image_bytes)
-
-        logger.debug(f"Saved vehicle image: {file_path}")
-        return str(file_path)
-    except Exception as e:
-        logger.error(f"Error saving vehicle image: {str(e)}")
-        return None
+def parse_plate_data(plate_data: dict) -> dict:
+    """Parse plate data from Dahua ANPR notification."""
+    return {
+        "bbox": plate_data.get('BoundingBox'),
+        "channel": plate_data.get('Channel'),
+        "confidence": plate_data.get('Confidence'),
+        "is_exist": plate_data.get('IsExist'),
+        "color": plate_data.get('PlateColor'),
+        "number": plate_data.get('PlateNumber'),
+        "type": plate_data.get('PlateType'),
+        "region": plate_data.get('Region'),
+        "upload_num": plate_data.get('UploadNum'),
+    }
 
 
-class VehicleInfo(BaseModel):
-    """Model for ANPR vehicle information."""
-    plate_number: Optional[str] = None
-    vehicle_color: Optional[str] = None
-    vehicle_logo: Optional[str] = None
-    vehicle_type: Optional[str] = None
-    driving_direction: Optional[str] = None
-    capture_time: Optional[str] = None
-    location: Optional[str] = None
-    accuracy: Optional[float] = None
-    in_blocklist: Optional[bool] = None
-    vehicle_body_image: Optional[str] = None  # Base64 encoded image
+def parse_vehicle_data(vehicle_data: dict) -> dict:
+    """Parse vehicle data from Dahua ANPR notification."""
+    return {
+        "bbox": vehicle_data.get('VehicleBoundingBox'),
+        "color": vehicle_data.get('VehicleColor'),
+        "series": vehicle_data.get('VehicleSeries'),
+        "sign": vehicle_data.get('VehicleSign'),
+        "type": vehicle_data.get('VehicleType'),
+    }
+
+
+def parse_snap_data(snap_data: dict) -> dict:
+    """Parse snap data from Dahua ANPR notification."""
+    dt = snap_data.get('AccurateTime')
+    if dt is not None:
+        dt = datetime.strptime(dt, '%Y-%m-%d %H:%M:%S.%f')
+
+    return {
+        "time": dt,
+        "allow_user": snap_data.get('AllowUser'),
+        "allow_user_end_time": snap_data.get('AllowUserEndTime'),
+        "block_user": snap_data.get('BlockUser'),
+        "block_user_end_time": snap_data.get('BlockUserEndTime'),
+        "direction": snap_data.get('Direction'),
+        "timezone": snap_data.get('TimeZone'),
+    }
+
+
+def parse_normal_pic_data(normal_pic_data: dict) -> dict:
+    """Parse normal pic data from Dahua ANPR notification."""
+    return {
+        "content": normal_pic_data.get('Content'),
+        "name": normal_pic_data.get('PicName'),
+    }
+
+
+def parse_picture_data(picture_data: dict) -> dict:
+    """Parse picture data from Dahua ANPR notification."""
+    return {
+        "normal_pic": parse_normal_pic_data(picture_data.get('NormalPic', {})),
+        "plate": parse_plate_data(picture_data.get('Plate', {})),
+        "vehicle": parse_vehicle_data(picture_data.get('Vehicle', {})),
+        "snap": parse_snap_data(picture_data.get('SnapInfo', {})),
+    }
 
 
 @app.post("/NotificationInfo/TollgateInfo")
@@ -91,49 +109,31 @@ async def handle_anpr_notification(request: Request):
     try:
         body = await request.body()
         notification_data = json.loads(body)
-        logger.info(f"Received ANPR notification: {notification_data}")
-
-        # Extract vehicle information
-        vehicle_info = notification_data.get('vehicle_info', {})
-        plate_number = vehicle_info.get('plate_number', 'unknown')
-        direction = vehicle_info.get('driving_direction', 'unknown')
-
-        # Map direction to in/out if needed
-        direction_map = {
-            'east': 'in',
-            'west': 'out',
-            # Add more mappings as needed
-        }
-        direction = direction_map.get(direction.lower(), direction)
-
-        timestamp = datetime.now()
-
-        # Handle vehicle body image if present
-        image_path = None
-        if 'vehicle_body_image' in notification_data:
-            image_path = await save_vehicle_image(
-                plate_number,
-                notification_data['vehicle_body_image'],
-                timestamp,
-                direction
-            )
-
-        response_data = {
-            "status": "success",
-            "message": "ANPR notification received",
-            "timestamp": timestamp.isoformat(),
-            "saved_image_path": image_path,
-            "direction": direction
-        }
-
-        return JSONResponse(content=response_data, status_code=200)
-
+        logger.debug("Received ANPR notification")
+        data = parse_picture_data(notification_data.get('Picture', {}))
     except Exception as e:
-        logger.error(f"Error processing ANPR notification: {str(e)}")
+        logger.error(f"Error parsing ANPR notification: {str(e)}")
         return JSONResponse(
             content={"status": "error", "message": str(e)},
             status_code=500
         )
+
+    try:
+        #await save_data(data)
+        print(data)
+    except Exception as e:
+        logger.error(f"Error saving data: {str(e)}")
+        return JSONResponse(
+            content={"status": "error", "message": str(e)},
+            status_code=500
+        )
+
+    # just return success
+    logger.debug("ANPR notification processed successfully")
+    return JSONResponse(
+        content={"status": "success", "message": "ANPR notification received"},
+        status_code=200
+    )
 
 
 @app.post("/NotificationInfo/KeepAlive")
