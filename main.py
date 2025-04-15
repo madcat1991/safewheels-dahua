@@ -155,7 +155,11 @@ async def handle_anpr_notification(request: Request):
 
     logger.debug("ANPR notification processed successfully")
     return JSONResponse(
-        content={"status": "success", "message": "ANPR notification received"},
+        content={
+            "status": "success",
+            "message": "ANPR notification received",
+            "result": "true",  # otherwise the camera will keep sending the same notification
+        },
         status_code=200
     )
 
