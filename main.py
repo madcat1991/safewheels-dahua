@@ -2,10 +2,9 @@
 FastAPI server that receives notifications from Dahua cameras via ITSAPI.
 Handles ANPR notifications and heartbeat messages.
 """
+from typing import Any
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
-from typing import Optional
 import logging
 import json
 from datetime import datetime
@@ -96,11 +95,48 @@ def parse_normal_pic_data(normal_pic_data: dict) -> dict:
 def parse_picture_data(picture_data: dict) -> dict:
     """Parse picture data from Dahua ANPR notification."""
     return {
-        "normal_pic": parse_normal_pic_data(picture_data.get('NormalPic', {})),
+        "image": parse_normal_pic_data(picture_data.get('NormalPic', {})),
         "plate": parse_plate_data(picture_data.get('Plate', {})),
         "vehicle": parse_vehicle_data(picture_data.get('Vehicle', {})),
         "snap": parse_snap_data(picture_data.get('SnapInfo', {})),
     }
+
+
+def get_or_raise_if_empty(data: dict, key: str) -> Any:
+    """Get a value from a dictionary or raise an error if it's empty."""
+    value = data.get(key)
+    if value is None or value == '':
+        raise ValueError(f"Missing required data: {key}")
+    return value
+
+
+async def save_vehicle_image(data: dict) -> str:
+    """Save the vehicle body image to disk."""
+    img_content = get_or_raise_if_empty(data['image'], 'content')
+    snap_time = get_or_raise_if_empty(data['snap'], 'time')
+    plate_number = get_or_raise_if_empty(data['plate'], 'number')
+
+    # Create directory for this day
+    date_dir = IMAGES_DIR / snap_time.strftime("%Y-%m-%d")
+    date_dir.mkdir(exist_ok=True)
+
+    # Create filename with timestamp (including microseconds) and plate number
+    time_str = snap_time.strftime('%Y%m%d_%H%M%S.%f')
+    filename = f"{time_str}_{plate_number}.jpg"
+    file_path = date_dir / filename
+
+    # Decode and save the image
+    image_bytes = base64.b64decode(img_content)
+    with open(file_path, 'wb') as f:
+        f.write(image_bytes)
+
+    logger.debug(f"Saved vehicle image: {file_path}")
+    return str(file_path)
+
+
+async def save_data(data: dict) -> None:
+    """Save ANPR data including vehicle images."""
+    image_path = await save_vehicle_image(data)
 
 
 @app.post("/NotificationInfo/TollgateInfo")
@@ -111,24 +147,14 @@ async def handle_anpr_notification(request: Request):
         notification_data = json.loads(body)
         logger.debug("Received ANPR notification")
         data = parse_picture_data(notification_data.get('Picture', {}))
+        await save_data(data)
     except Exception as e:
-        logger.error(f"Error parsing ANPR notification: {str(e)}")
+        logger.error(f"Error processing ANPR notification: {str(e)}")
         return JSONResponse(
             content={"status": "error", "message": str(e)},
             status_code=500
         )
 
-    try:
-        #await save_data(data)
-        print(data)
-    except Exception as e:
-        logger.error(f"Error saving data: {str(e)}")
-        return JSONResponse(
-            content={"status": "error", "message": str(e)},
-            status_code=500
-        )
-
-    # just return success
     logger.debug("ANPR notification processed successfully")
     return JSONResponse(
         content={"status": "success", "message": "ANPR notification received"},
