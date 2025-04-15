@@ -1,19 +1,11 @@
 """
 FastAPI server that receives notifications from Dahua cameras via ITSAPI.
-Handles ANPR notifications and heartbeat messages with Digest authentication.
-
-Note about Dahua authentication:
-- Dahua cameras use a non-standard Digest authentication
-- They send empty values for realm, nonce, and qop
-- Standard Digest authentication implementations won't work with them
-- This code implements a simplified version that works with Dahua cameras
+Handles ANPR notifications and heartbeat messages.
 """
-import re
-from fastapi import FastAPI, Request, Depends, HTTPException, status, Security
+from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
-from fastapi.security import HTTPDigest, HTTPAuthorizationCredentials
 from pydantic import BaseModel
-from typing import Optional, Dict
+from typing import Optional
 import logging
 import json
 from datetime import datetime
@@ -40,12 +32,6 @@ if not PORT:
     raise ValueError("PORT must be set in .env file")
 PORT = int(PORT)  # Convert to integer since env vars are strings
 
-# Authentication credentials
-AUTH_USERNAME = os.getenv("AUTH_USERNAME")
-AUTH_PASSWORD = os.getenv("AUTH_PASSWORD")
-if not AUTH_USERNAME or not AUTH_PASSWORD:
-    raise ValueError("AUTH_USERNAME and AUTH_PASSWORD must be set in .env file")
-
 # Create directory for storing images
 IMAGES_DIR_NAME = os.getenv("IMAGES_DIR")
 if not IMAGES_DIR_NAME:
@@ -54,73 +40,6 @@ IMAGES_DIR = Path(IMAGES_DIR_NAME)
 IMAGES_DIR.mkdir(exist_ok=True)
 
 app = FastAPI(title="Dahua ITSAPI Server")
-
-# Initialize security with Digest authentication
-# Note: Dahua cameras require Digest auth but use a non-standard implementation
-security = HTTPDigest()
-
-
-def parse_digest_header(digest_header: str) -> Dict[str, str]:
-    """
-    Parse Digest authentication header into key-value pairs.
-
-    Dahua cameras send Digest headers with empty values for several fields,
-    so we need a robust parser that can handle this unusual format.
-    """
-    matches = re.findall(r'(\w+)=(".*?"|\w+)', digest_header)
-    return {key: value.strip('"') for key, value in matches}
-
-
-async def authorize_digest(credentials: HTTPAuthorizationCredentials = Security(security)):
-    """
-    Authorize the user using Dahua-specific Digest authentication.
-
-    Based on logs and testing, Dahua cameras use a non-standard digest auth implementation
-    with empty realm, nonce and qop values. Standard digest validation fails with these
-    empty values, so we use a simplified approach that only validates the username.
-
-    Security is still maintained as:
-    1. The connection can be secured using TLS/SSL
-    2. Username is still verified against configured values
-    3. The implementation is limited to this specific use case with Dahua cameras
-    """
-    if credentials.scheme.lower() != "digest":
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Digest authentication required",
-            headers={"WWW-Authenticate": "Digest"},
-        )
-
-    try:
-        # Parse the Digest header
-        digest_values = parse_digest_header(credentials.credentials)
-
-        # Extract username
-        username = digest_values.get("username")
-
-        # Verify username
-        if username != AUTH_USERNAME:
-            logger.warning(f"Invalid username: {username}")
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid credentials",
-                headers={"WWW-Authenticate": "Digest"},
-            )
-
-        # For the Dahua cameras, we only check the username
-        # Their implementation of digest is non-standard with empty
-        # realm, nonce, and qop values, making password validation impossible
-
-        logger.debug(f"Successfully authenticated user: {username}")
-        return username
-
-    except Exception as e:
-        logger.error(f"Authentication error: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Authentication failed",
-            headers={"WWW-Authenticate": "Digest"},
-        )
 
 
 async def save_vehicle_image(
@@ -145,7 +64,7 @@ async def save_vehicle_image(
         with open(file_path, 'wb') as f:
             f.write(image_bytes)
 
-        logger.info(f"Saved vehicle image: {file_path}")
+        logger.debug(f"Saved vehicle image: {file_path}")
         return str(file_path)
     except Exception as e:
         logger.error(f"Error saving vehicle image: {str(e)}")
@@ -167,15 +86,12 @@ class VehicleInfo(BaseModel):
 
 
 @app.post("/NotificationInfo/TollgateInfo")
-async def handle_anpr_notification(
-    request: Request,
-    username: str = Depends(authorize_digest)
-):
+async def handle_anpr_notification(request: Request):
     """Handle ANPR notifications from Dahua cameras."""
     try:
         body = await request.body()
         notification_data = json.loads(body)
-        logger.info(f"Received ANPR notification from {username}: {notification_data}")
+        logger.info(f"Received ANPR notification: {notification_data}")
 
         # Extract vehicle information
         vehicle_info = notification_data.get('vehicle_info', {})
@@ -221,15 +137,12 @@ async def handle_anpr_notification(
 
 
 @app.post("/NotificationInfo/KeepAlive")
-async def handle_heartbeat(
-    request: Request,
-    username: str = Depends(authorize_digest)
-):
+async def handle_heartbeat(request: Request):
     """Handle camera heartbeat messages."""
     try:
         body = await request.body()
         heartbeat_data = json.loads(body)
-        logger.info(f"Received heartbeat from {username}: {heartbeat_data}")
+        logger.info(f"Received heartbeat: {heartbeat_data}")
 
         return JSONResponse(
             content={
@@ -251,6 +164,5 @@ async def handle_heartbeat(
 if __name__ == "__main__":
     import uvicorn
     logger.info(f"Starting server on {HOST}:{PORT}")
-    logger.info(f"Using username: {AUTH_USERNAME}")
     logger.info(f"Images will be saved to: {IMAGES_DIR.absolute()}")
     uvicorn.run(app, host=HOST, port=PORT)
