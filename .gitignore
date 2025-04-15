@@ -41,3 +41,9 @@ env/
 .env.development.local
 .env.test.local
 .env.production.local
+
+# Database
+*.db
+
+# Data
+vehicle_images/
