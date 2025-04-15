@@ -8,13 +8,10 @@ from fastapi.responses import JSONResponse
 import logging
 import json
 from datetime import datetime
-import os
 import base64
-from dotenv import load_dotenv
 from pathlib import Path
 
 # Load environment variables and configure logging
-load_dotenv()
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
@@ -22,19 +19,11 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Server configuration
-HOST = os.getenv("HOST")
-if not HOST:
-    raise ValueError("HOST must be set in .env file")
+HOST = "192.168.1.203"  # VPN interface IP
+PORT = 7070
 
-PORT = os.getenv("PORT")
-if not PORT:
-    raise ValueError("PORT must be set in .env file")
-PORT = int(PORT)  # Convert to integer since env vars are strings
-
-# Create directory for storing images
-IMAGES_DIR_NAME = os.getenv("IMAGES_DIR")
-if not IMAGES_DIR_NAME:
-    raise ValueError("IMAGES_DIR must be set in .env file")
+# Storage configuration
+IMAGES_DIR_NAME = "vehicle_images"  # Directory where vehicle images will be stored
 IMAGES_DIR = Path(IMAGES_DIR_NAME)
 IMAGES_DIR.mkdir(exist_ok=True)
 
