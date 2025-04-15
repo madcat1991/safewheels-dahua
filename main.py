@@ -9,23 +9,17 @@ import logging
 import json
 from datetime import datetime
 import base64
-from pathlib import Path
 
-# Load environment variables and configure logging
+# Import configuration and database modules
+from config import settings
+import db
+
+# Configure logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
-
-# Server configuration
-HOST = "192.168.1.203"  # VPN interface IP
-PORT = 7070
-
-# Storage configuration
-IMAGES_DIR_NAME = "vehicle_images"  # Directory where vehicle images will be stored
-IMAGES_DIR = Path(IMAGES_DIR_NAME)
-IMAGES_DIR.mkdir(exist_ok=True)
 
 app = FastAPI(title="Dahua ITSAPI Server")
 
@@ -106,7 +100,7 @@ async def save_vehicle_image(data: dict) -> str:
     plate_number = get_or_raise_if_empty(data['plate'], 'number')
 
     # Create directory for this day
-    date_dir = IMAGES_DIR / snap_time.strftime("%Y-%m-%d")
+    date_dir = settings.images_dir / snap_time.strftime("%Y-%m-%d")
     date_dir.mkdir(exist_ok=True)
 
     # Create filename with timestamp (including microseconds) and plate number
@@ -124,8 +118,23 @@ async def save_vehicle_image(data: dict) -> str:
 
 
 async def save_data(data: dict) -> None:
-    """Save ANPR data including vehicle images."""
+    """Save ANPR data including vehicle images and database record."""
+    # Save the image first
     image_path = await save_vehicle_image(data)
+
+    # Save the data to the database
+    try:
+        record_id = db.save_vehicle_record(
+            plate_data=data['plate'],
+            vehicle_data=data['vehicle'],
+            snap_data=data['snap'],
+            image_path=image_path
+        )
+        logger.info(f"Saved record to database with ID: {record_id}")
+    except Exception as e:
+        logger.error(f"Failed to save to database: {str(e)}")
+        # Continue execution even if database save fails
+        # to avoid losing the image and allow for recovery
 
 
 @app.post("/NotificationInfo/TollgateInfo")
@@ -178,6 +187,6 @@ async def handle_heartbeat(request: Request):
 
 if __name__ == "__main__":
     import uvicorn
-    logger.info(f"Starting server on {HOST}:{PORT}")
-    logger.info(f"Images will be saved to: {IMAGES_DIR.absolute()}")
-    uvicorn.run(app, host=HOST, port=PORT)
+    logger.info(f"Starting server on {settings.host}:{settings.port}")
+    logger.info(f"Images will be saved to: {settings.images_dir.absolute()}")
+    uvicorn.run(app, host=settings.host, port=settings.port)
