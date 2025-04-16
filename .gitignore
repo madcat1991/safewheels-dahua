@@ -47,3 +47,4 @@ env/
 
 # Data
 vehicle_images/
+last_processed_id.txt
