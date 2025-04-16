@@ -1,5 +1,5 @@
 """
-ANPR service functions for parsing and processing camera data.
+ANPR core functions for parsing and processing camera data.
 """
 import base64
 import logging
