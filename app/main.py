@@ -37,5 +37,5 @@ async def root():
 if __name__ == "__main__":
     import uvicorn
     logger.info(f"Starting server on {settings.host}:{settings.port}")
-    logger.info(f"Images will be saved to: {settings.images_dir.absolute()}")
+    logger.info(f"Images will be saved to: {settings.images_dir_path.absolute()}")
     uvicorn.run(app, host=settings.host, port=settings.port)

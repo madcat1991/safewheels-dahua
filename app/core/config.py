@@ -13,7 +13,7 @@ class Settings(BaseSettings):
     port: int = Field(7070, description="Port to listen on")
 
     # Storage configuration
-    images_dir_name: str = Field("vehicle_images", description="Directory where vehicle images will be stored")
+    images_dir: str = Field("vehicle_images", description="Directory where vehicle images will be stored")
 
     # Database configuration
     db_filename: str = Field("safewheels.db", description="SQLite database filename")
@@ -26,9 +26,9 @@ class Settings(BaseSettings):
     notification_check_interval: int = Field(15, description="Interval in seconds between checks for new records")
 
     @property
-    def images_dir(self) -> Path:
+    def images_dir_path(self) -> Path:
         """Return the Path object for the images directory."""
-        path = Path(self.images_dir_name)
+        path = Path(self.images_dir)
         path.mkdir(exist_ok=True)
         return path
 

@@ -79,7 +79,7 @@ async def save_vehicle_image(data: Dict[str, Any]) -> str:
     plate_number = data['plate']['number']
 
     # Create directory for this day
-    date_dir = settings.images_dir / snap_time.strftime("%Y-%m-%d")
+    date_dir = settings.images_dir_path / snap_time.strftime("%Y-%m-%d")
     date_dir.mkdir(exist_ok=True)
 
     # Create filename with timestamp (including microseconds) and plate number
