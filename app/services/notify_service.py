@@ -220,6 +220,7 @@ class NotifyService:
                         await self.send_notification(record)
 
                 # Wait for the next check
+                logger.info(f"Waiting {settings.notification_check_interval} seconds before next check")
                 await asyncio.sleep(settings.notification_check_interval)
 
         except KeyboardInterrupt:
