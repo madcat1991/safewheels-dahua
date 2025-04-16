@@ -88,14 +88,16 @@ class NotifyService:
             if conn:
                 conn.close()
 
-    def process_image(self, image_path: str, vehicle_bbox: Dict, plate_bbox: Optional[Dict] = None) -> bytes:
+    def process_image(self, image_path: str, vehicle_bbox: List[int], plate_bbox: Optional[List[int]] = None) -> bytes:
         """
         Process the vehicle image by drawing plate bbox and cropping to vehicle bbox.
 
         Args:
             image_path: Path to the image file
-            vehicle_bbox: Bounding box of the vehicle
-            plate_bbox: Optional bounding box of the license plate
+            vehicle_bbox: Bounding box of the vehicle as [x1, y1, x2, y2] where
+                (x1,y1) is top-left and (x2,y2) is bottom-right
+            plate_bbox: Optional bounding box of the license plate as [x1, y1, x2, y2] where
+                (x1,y1) is top-left and (x2,y2) is bottom-right
 
         Returns:
             Processed image as bytes
@@ -108,14 +110,14 @@ class NotifyService:
 
             # Draw plate bbox if available
             if plate_bbox:
-                px, py, pw, ph = map(int, plate_bbox.values())
-                cv2.rectangle(img, (px, py), (px+pw, py+ph), (0, 255, 0), 2)
+                x1, y1, x2, y2 = map(int, plate_bbox)
+                cv2.rectangle(img, (x1, y1), (x2, y2), (0, 255, 0), 2)
 
-            # Convert bbox coordinates to integers
-            x, y, w, h = map(int, vehicle_bbox.values())
+            # Get vehicle bbox coordinates
+            x1, y1, x2, y2 = map(int, vehicle_bbox)
 
             # Crop the image to vehicle bbox
-            cropped = img[y:y+h, x:x+w]
+            cropped = img[y1:y2, x1:x2]
 
             # Encode the image to bytes
             _, img_encoded = cv2.imencode('.jpg', cropped)
@@ -150,9 +152,14 @@ class NotifyService:
             caption = "🚗 Vehicle detected\n"
 
             # Add direction if available
-            if record['direction']:
-                direction_emoji = "⬆️" if record['direction'].lower() == 'up' else "⬇️"
-                caption += f"📏 Direction: {direction_emoji}\n"
+            direction = record.get('direction', '')
+            if direction == 'Obverse':
+                direction_emoji = "⬇️"
+            elif direction == 'Reverse':
+                direction_emoji = "⬆️"
+            else:
+                direction_emoji = "❓"
+            caption += f"📏 Direction: {direction_emoji}\n"
 
             # Add plate info
             if record['plate_number']:
