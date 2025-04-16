@@ -25,13 +25,14 @@ A FastAPI server that receives and processes ANPR (Automatic Number Plate Recogn
 │   │       └── anpr.py
 │   ├── core
 │   │   ├── __init__.py
+│   │   ├── anpr.py
 │   │   └── config.py
 │   ├── db
 │   │   ├── __init__.py
 │   │   └── database.py
 │   ├── services
 │   │   ├── __init__.py
-│   │   └── anpr.py
+│   │   └── notify_service.py
 │   └── main.py
 ├── requirements.txt
 └── README.md
@@ -69,6 +70,9 @@ HOST=<your-server-ip>
 PORT=7070
 IMAGES_DIR=vehicle_images
 DB_FILENAME=safewheels.db
+TELEGRAM_BOT_TOKEN=<your-bot-token>
+TELEGRAM_CHAT_ID=<your-chat-id>
+NOTIFICATION_CHECK_INTERVAL=15
 ```
 
 ## Usage

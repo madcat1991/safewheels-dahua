@@ -7,7 +7,7 @@ from datetime import datetime
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
-from app.services.anpr import parse_picture_data, save_vehicle_image
+from app.core.anpr import parse_picture_data, save_vehicle_image
 from app.db.database import save_vehicle_record
 
 logger = logging.getLogger(__name__)
