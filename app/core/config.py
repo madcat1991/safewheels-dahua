@@ -18,6 +18,13 @@ class Settings(BaseSettings):
     # Database configuration
     db_filename: str = Field("safewheels.db", description="SQLite database filename")
 
+    # Telegram configuration
+    telegram_bot_token: str = Field("", description="Telegram bot token for notifications")
+    telegram_authorized_users: str = Field("", description="Comma-separated list of authorized Telegram user IDs")
+
+    # Notification service configuration
+    notification_check_interval: int = Field(15, description="Interval in seconds between checks for new records")
+
     @property
     def images_dir(self) -> Path:
         """Return the Path object for the images directory."""
@@ -29,6 +36,11 @@ class Settings(BaseSettings):
     def db_path(self) -> Path:
         """Return the Path object for the database file."""
         return Path(self.db_filename)
+
+    @property
+    def authorized_users(self) -> list[int]:
+        """Return list of authorized Telegram user IDs."""
+        return [int(uid.strip()) for uid in self.telegram_authorized_users.split(",") if uid.strip()]
 
     class Config:
         env_file = ".env"

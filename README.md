@@ -11,6 +11,7 @@ A FastAPI server that receives and processes ANPR (Automatic Number Plate Recogn
 - Stores images in organized daily directories
 - JSON serialization for bounding box coordinates
 - Complete data storage for all ANPR fields
+- Automatic notifications via Telegram for new vehicle detections
 
 ## Project Structure
 
@@ -25,8 +26,8 @@ A FastAPI server that receives and processes ANPR (Automatic Number Plate Recogn
 │   │       └── anpr.py
 │   ├── core
 │   │   ├── __init__.py
-│   │   ├── anpr.py
-│   │   └── config.py
+│   │   ├── config.py
+│   │   └── anpr.py
 │   ├── db
 │   │   ├── __init__.py
 │   │   └── database.py
@@ -44,6 +45,8 @@ A FastAPI server that receives and processes ANPR (Automatic Number Plate Recogn
 - FastAPI
 - Uvicorn
 - Pydantic Settings
+- Python Telegram Bot
+- OpenCV
 
 ## Installation
 
@@ -66,13 +69,20 @@ pip install -r requirements.txt
 
 4. Create a `.env` file in the project root with your configuration:
 ```env
+# Server configuration
 HOST=<your-server-ip>
 PORT=7070
+
+# Storage configuration
 IMAGES_DIR=vehicle_images
 DB_FILENAME=safewheels.db
+
+# Telegram configuration
 TELEGRAM_BOT_TOKEN=<your-bot-token>
-TELEGRAM_CHAT_ID=<your-chat-id>
-NOTIFICATION_CHECK_INTERVAL=15
+TELEGRAM_AUTHORIZED_USERS=<user1-id>,<user2-id>  # Comma-separated list of Telegram user IDs
+
+# Notification service configuration
+NOTIFICATION_CHECK_INTERVAL=15  # Interval in seconds between checks for new records
 ```
 
 ## Usage
@@ -82,12 +92,17 @@ NOTIFICATION_CHECK_INTERVAL=15
 python -m app.main
 ```
 
-2. Configure your Dahua camera to send notifications to:
+2. Start the notification service:
+```bash
+python -m app.services.notify_service
+```
+
+3. Configure your Dahua camera to send notifications to:
 ```
 http://<your-server-ip>:7070/NotificationInfo/TollgateInfo
 ```
 
-3. Configure the camera to send heartbeat messages to:
+4. Configure the camera to send heartbeat messages to:
 ```
 http://<your-server-ip>:7070/NotificationInfo/KeepAlive
 ```
@@ -112,6 +127,24 @@ http://<your-server-ip>:7070/NotificationInfo/KeepAlive
 - **Description**: Returns application status
 - **Response**: JSON with app name and status
 
+## Notification Service
+
+The notification service runs as a separate process and:
+- Checks for new vehicle records every 15 seconds (configurable)
+- Processes images by:
+  - Drawing license plate bounding box on the full image
+  - Cropping to vehicle bounding box
+- Sends notifications via Telegram with:
+  - Cropped vehicle image with highlighted license plate
+  - License plate number (if available)
+  - Vehicle movement direction (up/down)
+  - Detection timestamp
+- Maintains state of processed records to avoid duplicates
+- Supports multiple authorized users
+- Provides detailed error messages for:
+  - No license plate detected
+  - License plate detected but not recognized
+
 ## Data Storage
 
 ### Images
@@ -135,7 +168,7 @@ The project follows FastAPI's recommended structure for larger applications:
 - `app/api/endpoints/`: API route handlers
 - `app/core/`: Core functionality and configuration
 - `app/db/`: Database models and operations
-- `app/services/`: Business logic and services
+- `app/services/`: Background services
 
 ## License
 
