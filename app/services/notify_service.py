@@ -63,7 +63,7 @@ class NotifyService:
             cursor.execute('''
                 SELECT id, plate_number, plate_bbox, vehicle_bbox, image_path, detection_time, direction
                 FROM vehicles
-                WHERE id > ?
+                WHERE vehicle_type NOT IN ('Motorcycle') AND id > ?
                 ORDER BY id ASC
             ''', (self.last_processed_id,))
 
@@ -171,28 +171,31 @@ class NotifyService:
 
             caption += f"⏱️ Time: {time_str}"
 
-            # Send the photo to each authorized user
-            success_count = 0
             error_count = 0
-
             for user_id in settings.authorized_users:
                 try:
                     photo = InputFile(image_bytes, filename=f"vehicle_{record['id']}.jpg")
                     await self.bot.send_photo(
                         chat_id=user_id,
                         photo=photo,
-                        caption=caption
+                        caption=caption,
+                        write_timeout=30
                     )
-                    success_count += 1
+                except telegram.error.TimedOut:
+                    # This is quite an often error, which is mainly due to the
+                    # Telegram not being able to handle image uploads in a timely manner.
+                    # However, it doesn't mean that the notification was not sent.
+                    logger.warning(f"Timeout sending notification to user {user_id}")
                 except Exception as e:
                     logger.error(f"Failed to send notification to user {user_id}: {e}")
                     error_count += 1
 
-            # Update the last processed ID if at least one notification was sent
-            if success_count > 0:
+            # Update the last processed ID
+            # Even then we
+            if error_count < len(settings.authorized_users):
                 self.last_processed_id = record['id']
                 self._save_last_processed_id(record['id'])
-                msg = f"Sent notification for record {record['id']} to {success_count} users"
+                msg = f"Sent notification for record {record['id']}"
                 if error_count > 0:
                     msg += f" ({error_count} errors)"
                 logger.info(msg)
