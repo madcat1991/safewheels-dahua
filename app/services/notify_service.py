@@ -61,7 +61,15 @@ class NotifyService:
             cursor = conn.cursor()
 
             cursor.execute('''
-                SELECT id, plate_number, plate_bbox, vehicle_bbox, image_path, detection_time, direction
+                SELECT
+                    id,
+                    plate_number,
+                    plate_bbox,
+                    plate_confidence,
+                    vehicle_bbox,
+                    image_path,
+                    detection_time,
+                    direction
                 FROM vehicles
                 WHERE vehicle_type NOT IN ('Motorcycle') AND id > ?
                 ORDER BY id ASC
@@ -73,10 +81,11 @@ class NotifyService:
                     'id': row[0],
                     'plate_number': row[1],
                     'plate_bbox': json.loads(row[2]) if row[2] else None,
-                    'vehicle_bbox': json.loads(row[3]) if row[3] else None,
-                    'image_path': row[4],
-                    'detection_time': row[5],
-                    'direction': row[6]
+                    'plate_confidence': row[3],
+                    'vehicle_bbox': json.loads(row[4]) if row[4] else None,
+                    'image_path': row[5],
+                    'detection_time': row[6],
+                    'direction': row[7]
                 }
                 records.append(record)
 
@@ -161,10 +170,13 @@ class NotifyService:
                 direction_emoji = "❓"
             caption += f"📏 Direction: {direction_emoji}\n"
 
-            # Add plate info
-            if record['plate_number']:
+            plate_confidence = record.get('plate_confidence', 0)
+            plate_number = record.get('plate_number')
+            plate_bbox = record.get('plate_bbox')
+
+            if plate_confidence >= settings.plate_confidence_threshold and plate_number:
                 caption += f"📝 License plate: {record['plate_number']}\n"
-            elif record['plate_bbox']:
+            elif plate_bbox:
                 caption += "⚠️⚠️⚠️ No license plate recognized ⚠️⚠️⚠️\n"
             else:
                 caption += "🚨🚨🚨 No license plate detected 🚨🚨🚨\n"

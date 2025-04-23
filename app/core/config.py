@@ -24,6 +24,10 @@ class Settings(BaseSettings):
 
     # Notification service configuration
     notification_check_interval: int = Field(15, description="Interval in seconds between checks for new records")
+    plate_confidence_threshold: float = Field(
+        0.7,
+        description="Minimum confidence level required for plate recognition (0.0 to 1.0)"
+    )
 
     @property
     def images_dir_path(self) -> Path:
