@@ -1,0 +1,48 @@
+  services:
+    db:
+      image: postgres:17-alpine
+      container_name: safewheels_db
+      env_file:
+        - .env
+      volumes:
+        - postgres_data:/var/lib/postgresql/data
+      ports:
+        - "${POSTGRES_PORT}:${POSTGRES_PORT}"
+      healthcheck:
+        test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+        interval: 5s
+        timeout: 5s
+        retries: 5
+
+    web:
+      build:
+        context: .
+        dockerfile: Dockerfile.web
+      container_name: safewheels_web
+      env_file:
+        - .env  # needed for the Dockerfile.web
+      volumes:
+        - ./${IMAGES_DIR}:/app/${IMAGES_DIR}
+      ports:
+        - "${PORT}:${PORT}"
+      depends_on:
+        db:
+          condition: service_healthy
+      # restart: unless-stopped
+
+    notify:
+      build:
+        context: .
+        dockerfile: Dockerfile.notify
+      container_name: safewheels_notify
+      env_file:
+        - .env  # needed for the Dockerfile.notify
+      volumes:
+        - ./${IMAGES_DIR}:/app/${IMAGES_DIR}
+      depends_on:
+        db:
+          condition: service_healthy
+      # restart: unless-stopped
+
+  volumes:
+    postgres_data:

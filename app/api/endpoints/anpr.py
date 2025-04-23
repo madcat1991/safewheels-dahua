@@ -68,7 +68,7 @@ async def save_data(data: dict) -> None:
 
     # Save the data to the database
     try:
-        record_id = save_vehicle_record(
+        record_id = await save_vehicle_record(
             plate_data=data['plate'],
             vehicle_data=data['vehicle'],
             snap_data=data['snap'],

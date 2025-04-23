@@ -1,174 +1,166 @@
 # SafeWheels Dahua ANPR
 
-A FastAPI server that receives and processes ANPR (Automatic Number Plate Recognition) notifications from Dahua cameras.
+A FastAPI application that receives notifications from Dahua cameras via ITSAPI and sends notifications via Telegram.
 
 ## Features
 
-- Receives and processes ANPR notifications from Dahua cameras
-- Stores vehicle information in SQLite database
-- Saves vehicle images with timestamps and plate numbers
-- Handles camera heartbeat messages
-- Stores images in organized daily directories
-- JSON serialization for bounding box coordinates
-- Complete data storage for all ANPR fields
-- Automatic notifications via Telegram for new vehicle detections
-
-## Project Structure
-
-```
-.
-├── app
-│   ├── __init__.py
-│   ├── api
-│   │   ├── __init__.py
-│   │   └── endpoints
-│   │       ├── __init__.py
-│   │       └── anpr.py
-│   ├── core
-│   │   ├── __init__.py
-│   │   ├── config.py
-│   │   └── anpr.py
-│   ├── db
-│   │   ├── __init__.py
-│   │   └── database.py
-│   ├── services
-│   │   ├── __init__.py
-│   │   └── notify_service.py
-│   └── main.py
-├── requirements.txt
-└── README.md
-```
+- Receives ANPR notifications from Dahua cameras
+- Stores vehicle and plate data in a PostgreSQL database
+- Sends notifications via Telegram with vehicle images
+- Configurable plate recognition confidence threshold
+- Containerized deployment with Docker
+- Fully configurable through environment variables
 
 ## Prerequisites
 
-- Python 3.8 or higher
-- FastAPI
-- Uvicorn
-- Pydantic Settings
-- Python Telegram Bot
-- OpenCV
+- Docker and Docker Compose
+- Telegram bot token
+- Authorized Telegram user IDs
 
 ## Installation
 
 1. Clone the repository:
+   ```bash
+   git clone https://github.com/yourusername/safewheels_dahua.git
+   cd safewheels_dahua
+   ```
+
+2. Create a `.env` file based on `.env.example`:
+   ```bash
+   cp .env.example .env
+   ```
+
+3. Edit the `.env` file and set your configuration:
+   - `TELEGRAM_BOT_TOKEN`: Your Telegram bot token
+   - `TELEGRAM_AUTHORIZED_USERS`: Comma-separated list of authorized user IDs
+   - Database credentials and connection details
+   - Server host and port settings
+   - Other configuration options as needed
+
+## Deployment
+
+### Using Docker Compose (All Services)
+
+To run all services (web, notification, and database):
+
 ```bash
-git clone <repository-url>
-cd <repository-directory>
+docker-compose up -d
 ```
 
-2. Create and activate a virtual environment:
-```bash
-python -m venv .venv
-source .venv/bin/activate  # On Windows: .venv\Scripts\activate
-```
+This will start:
+- PostgreSQL database
+- FastAPI web service
+- Notification service
 
-3. Install dependencies:
-```bash
-pip install -r requirements.txt
-```
+### Running Individual Services
 
-4. Create a `.env` file in the project root with your configuration:
-```env
-# Server configuration
-HOST=<your-server-ip>
-PORT=7070
+You can also run individual services:
 
-# Storage configuration
-IMAGES_DIR=vehicle_images
-DB_FILENAME=safewheels.db
+1. Start the database:
+   ```bash
+   docker-compose up -d db
+   ```
 
-# Telegram configuration
-TELEGRAM_BOT_TOKEN=<your-bot-token>
-TELEGRAM_AUTHORIZED_USERS=<user1-id>,<user2-id>  # Comma-separated list of Telegram user IDs
+2. Start the web service:
+   ```bash
+   docker-compose up -d web
+   ```
 
-# Notification service configuration
-NOTIFICATION_CHECK_INTERVAL=15  # Interval in seconds between checks for new records
-```
+3. Start the notification service:
+   ```bash
+   docker-compose up -d notify
+   ```
 
-## Usage
+### Environment Variables
 
-1. Start the server:
-```bash
-python -m app.main
-```
+All aspects of the application can be configured through environment variables in the `.env` file:
 
-2. Start the notification service:
-```bash
-python -m app.services.notify_service
-```
+#### Database Configuration
+- `POSTGRES_USER`: PostgreSQL username (default: safewheels)
+- `POSTGRES_PASSWORD`: PostgreSQL password (default: safewheels)
+- `POSTGRES_DB`: PostgreSQL database name (default: safewheels)
+- `POSTGRES_HOST`: PostgreSQL host (default: db)
+- `POSTGRES_PORT`: PostgreSQL port (default: 5432)
 
-3. Configure your Dahua camera to send notifications to:
-```
-http://<your-server-ip>:7070/NotificationInfo/TollgateInfo
-```
+#### Server Configuration
+- `HOST`: Host IP address for the web service (default: 0.0.0.0)
+- `PORT`: Port for the web service (default: 7070)
 
-4. Configure the camera to send heartbeat messages to:
-```
-http://<your-server-ip>:7070/NotificationInfo/KeepAlive
-```
+#### Storage Configuration
+- `IMAGES_DIR`: Directory for storing vehicle images (default: vehicle_images)
 
-## API Endpoints
+#### Telegram Configuration
+- `TELEGRAM_BOT_TOKEN`: Telegram bot token (required)
+- `TELEGRAM_AUTHORIZED_USERS`: Comma-separated list of authorized user IDs (required)
 
-### ANPR Notification
-- **Endpoint**: `/NotificationInfo/TollgateInfo`
-- **Method**: POST
-- **Description**: Receives ANPR notifications from cameras
-- **Response**: JSON with status and message
+#### Notification Service Configuration
+- `PLATE_CONFIDENCE_THRESHOLD`: Minimum confidence level for plate recognition (0.0 to 1.0, default: 0.7)
+- `NOTIFICATION_CHECK_INTERVAL`: Interval in seconds between notification checks (default: 15)
 
-### Heartbeat
-- **Endpoint**: `/NotificationInfo/KeepAlive`
-- **Method**: POST
-- **Description**: Receives heartbeat messages from cameras
-- **Response**: JSON with status, message, and timestamp
+## Architecture
 
-### Root
-- **Endpoint**: `/`
-- **Method**: GET
-- **Description**: Returns application status
-- **Response**: JSON with app name and status
+The application consists of three main components:
 
-## Notification Service
+1. **Database Service (PostgreSQL)**
+   - Stores vehicle and plate data
+   - Persists data between container restarts
+   - Configurable host, port, and credentials
 
-The notification service runs as a separate process and:
-- Checks for new vehicle records every 15 seconds (configurable)
-- Processes images by:
-  - Drawing license plate bounding box on the full image
-  - Cropping to vehicle bounding box
-- Sends notifications via Telegram with:
-  - Cropped vehicle image with highlighted license plate
-  - License plate number (if available)
-  - Vehicle movement direction (up/down)
-  - Detection timestamp
-- Maintains state of processed records to avoid duplicates
-- Supports multiple authorized users
-- Provides detailed error messages for:
-  - No license plate detected
-  - License plate detected but not recognized
+2. **Web Service (FastAPI)**
+   - Receives ANPR notifications from cameras
+   - Processes and stores vehicle data
+   - Exposes API endpoints
+   - Configurable host and port
 
-## Data Storage
+3. **Notification Service**
+   - Monitors the database for new records
+   - Sends notifications via Telegram
+   - Can be run independently from the web service
+   - Configurable check interval and plate confidence threshold
 
-### Images
-Images are saved in the following structure:
-```
-vehicle_images/
-  YYYY-MM-DD/
-    YYYYMMDD_HHMMSS.microseconds_plate_number.jpg
-```
+## Volumes
 
-### Database
-Vehicle records are stored in SQLite with the following information:
-- Plate data (number, region, type, color, bbox, etc.)
-- Vehicle data (type, color, sign, series, bbox)
-- Snap data (time, direction, user permissions, timezone)
-- Image path
+- `postgres_data`: Persistent storage for PostgreSQL data
+- `vehicle_images`: Directory for storing vehicle images
+
+## Ports
+
+- Web service: Configurable via `PORT` (default: 7070)
+- PostgreSQL database: Configurable via `POSTGRES_PORT` (default: 5432)
 
 ## Development
 
-The project follows FastAPI's recommended structure for larger applications:
-- `app/api/endpoints/`: API route handlers
-- `app/core/`: Core functionality and configuration
-- `app/db/`: Database models and operations
-- `app/services/`: Background services
+To run the application in development mode:
+
+1. Create and activate a virtual environment:
+   ```bash
+   python -m venv .venv
+   source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+   ```
+
+2. Install dependencies:
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+3. Create a `.env` file with your configuration.
+
+4. Start PostgreSQL using Docker:
+   ```bash
+   docker-compose up -d db
+   ```
+
+5. Start the web service:
+   ```bash
+   uvicorn app.main:app --reload --host 0.0.0.0 --port 7070
+   ```
+
+6. Start the notification service (in a separate terminal):
+   ```bash
+   python -m app.services.notify_service
+   ```
+
+The application will automatically detect whether it's running in Docker or locally and adjust the database connection accordingly.
 
 ## License
 

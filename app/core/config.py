@@ -9,23 +9,26 @@ from pydantic_settings import BaseSettings
 class Settings(BaseSettings):
     """Application settings using Pydantic BaseSettings."""
     # Server configuration
-    host: str = Field("192.168.1.203", description="Host IP address to bind to")
-    port: int = Field(7070, description="Port to listen on")
+    host: str = Field(description="Host IP address to bind to")
+    port: int = Field(description="Port to listen on")
 
     # Storage configuration
-    images_dir: str = Field("vehicle_images", description="Directory where vehicle images will be stored")
+    images_dir: str = Field(description="Directory where vehicle images will be stored")
 
     # Database configuration
-    db_filename: str = Field("safewheels.db", description="SQLite database filename")
+    postgres_user: str = Field(description="PostgreSQL username")
+    postgres_password: str = Field(description="PostgreSQL password")
+    postgres_db: str = Field(description="PostgreSQL database name")
+    postgres_host: str = Field(description="PostgreSQL host")
+    postgres_port: int = Field(description="PostgreSQL port")
 
     # Telegram configuration
-    telegram_bot_token: str = Field("", description="Telegram bot token for notifications")
-    telegram_authorized_users: str = Field("", description="Comma-separated list of authorized Telegram user IDs")
+    telegram_bot_token: str = Field(description="Telegram bot token for notifications")
+    telegram_authorized_users: str = Field(description="Comma-separated list of authorized Telegram user IDs")
 
     # Notification service configuration
-    notification_check_interval: int = Field(15, description="Interval in seconds between checks for new records")
+    notification_check_interval: int = Field(description="Interval in seconds between checks for new records")
     plate_confidence_threshold: float = Field(
-        0.7,
         description="Minimum confidence level required for plate recognition (0.0 to 1.0)"
     )
 
@@ -35,11 +38,6 @@ class Settings(BaseSettings):
         path = Path(self.images_dir)
         path.mkdir(exist_ok=True)
         return path
-
-    @property
-    def db_path(self) -> Path:
-        """Return the Path object for the database file."""
-        return Path(self.db_filename)
 
     @property
     def authorized_users(self) -> list[int]:

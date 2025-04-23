@@ -2,9 +2,7 @@
 Service for processing new vehicle records and sending notifications via Telegram.
 """
 import asyncio
-import json
 import logging
-import sqlite3
 from datetime import datetime
 from typing import Dict, List, Optional
 
@@ -13,6 +11,7 @@ import telegram
 from telegram import InputFile
 
 from app.core.config import settings
+from app.db.database import get_pool, release_connection
 
 # Configure logging
 logging.basicConfig(
@@ -35,6 +34,7 @@ class NotifyService:
         self.bot_token = bot_token
         self.bot = telegram.Bot(token=bot_token)
         self.last_processed_id = self._load_last_processed_id()
+        self.pool = None
 
     def _load_last_processed_id(self) -> int:
         """Load the last processed record ID from a file."""
@@ -49,18 +49,19 @@ class NotifyService:
         with open("last_processed_id.txt", "w") as f:
             f.write(str(record_id))
 
-    def get_new_records(self) -> List[Dict]:
+    async def get_new_records(self) -> List[Dict]:
         """
         Get new vehicle records from the database.
 
         Returns:
             List of new vehicle records
         """
+        conn = None
         try:
-            conn = sqlite3.connect(settings.db_path)
-            cursor = conn.cursor()
+            pool = await get_pool()
+            conn = await pool.acquire()
 
-            cursor.execute('''
+            rows = await conn.fetch('''
                 SELECT
                     id,
                     plate_number,
@@ -71,21 +72,26 @@ class NotifyService:
                     detection_time,
                     direction
                 FROM vehicles
-                WHERE vehicle_type NOT IN ('Motorcycle') AND id > ?
+                WHERE vehicle_type NOT IN ('Motorcycle') AND id > $1
                 ORDER BY id ASC
-            ''', (self.last_processed_id,))
+            ''', self.last_processed_id)
 
             records = []
-            for row in cursor.fetchall():
+            for row in rows:
+                # Handle datetime serialization
+                detection_time = row['detection_time']
+                if isinstance(detection_time, datetime):
+                    detection_time = detection_time.isoformat()
+
                 record = {
-                    'id': row[0],
-                    'plate_number': row[1],
-                    'plate_bbox': json.loads(row[2]) if row[2] else None,
-                    'plate_confidence': row[3],
-                    'vehicle_bbox': json.loads(row[4]) if row[4] else None,
-                    'image_path': row[5],
-                    'detection_time': row[6],
-                    'direction': row[7]
+                    'id': row['id'],
+                    'plate_number': row['plate_number'],
+                    'plate_bbox': row['plate_bbox'],
+                    'plate_confidence': row['plate_confidence'],
+                    'vehicle_bbox': row['vehicle_bbox'],
+                    'image_path': row['image_path'],
+                    'detection_time': detection_time,
+                    'direction': row['direction']
                 }
                 records.append(record)
 
@@ -95,7 +101,7 @@ class NotifyService:
             return []
         finally:
             if conn:
-                conn.close()
+                await release_connection(conn)
 
     def process_image(self, image_path: str, vehicle_bbox: List[int], plate_bbox: Optional[List[int]] = None) -> bytes:
         """
@@ -154,7 +160,10 @@ class NotifyService:
             )
 
             # Format the detection time
-            detection_time = datetime.fromisoformat(record['detection_time'])
+            if isinstance(record['detection_time'], str):
+                detection_time = datetime.fromisoformat(record['detection_time'])
+            else:
+                detection_time = record['detection_time']
             time_str = detection_time.strftime("%Y-%m-%d %H:%M:%S")
 
             # Prepare the caption
@@ -228,7 +237,7 @@ class NotifyService:
         try:
             while True:
                 # Get new records
-                records = self.get_new_records()
+                records = await self.get_new_records()
                 if records:
                     logger.info(f"Found {len(records)} new records")
                     for record in records:

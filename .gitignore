@@ -24,7 +24,6 @@ wheels/
 venv/
 ENV/
 env/
-.env
 .venv/
 
 # IDE
@@ -36,11 +35,10 @@ env/
 # Logs
 *.log
 
-# Local development settings
+# Environment variables
+.env
 .env.local
-.env.development.local
-.env.test.local
-.env.production.local
+.env.docker
 
 # Database
 *.db

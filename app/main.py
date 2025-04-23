@@ -2,10 +2,12 @@
 FastAPI server that receives notifications from Dahua cameras via ITSAPI.
 """
 import logging
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from app.core.config import settings
 from app.api.endpoints import anpr
+from app.db.database import get_pool, close_pool
 
 # Configure logging
 logging.basicConfig(
@@ -14,11 +16,28 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Handle startup and shutdown events."""
+    # Startup
+    logger.info("Initializing database connection pool")
+    logger.info(f"DB host: {settings.postgres_host}, port: {settings.postgres_port}")
+    await get_pool()
+
+    yield
+
+    # Shutdown
+    logger.info("Closing database connection pool")
+    await close_pool()
+
+
 # Create FastAPI app
 app = FastAPI(
     title="SafeWheels Dahua ANPR",
     description="API server for receiving and processing ANPR notifications from Dahua cameras",
-    version="1.0.0"
+    version="1.0.0",
+    lifespan=lifespan
 )
 
 # Include routers
