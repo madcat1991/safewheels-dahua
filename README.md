@@ -11,6 +11,10 @@ A FastAPI application that receives notifications from Dahua cameras via ITSAPI 
 - Containerized deployment with Docker
 - Fully configurable through environment variables
 
+## Compatibility
+
+This project was created and tested with the **ITC413-PW4D Series** ANPR camera from Dahua. It should be compatible with other Dahua cameras that support the ITSAPI protocol for ANPR notifications.
+
 ## Prerequisites
 
 - Docker and Docker Compose
