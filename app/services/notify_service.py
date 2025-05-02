@@ -2,8 +2,8 @@
 Service for processing new vehicle records and sending notifications via Telegram.
 """
 import asyncio
+from enum import Enum
 import logging
-from datetime import datetime
 from typing import Dict, List, Optional
 
 import cv2
@@ -19,6 +19,13 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger("notify_service")
+
+
+class NotificationStatus(Enum):
+    """Status of a notification."""
+    NO_NOTIFICATION = "No notification sent"
+    NOTIFICATION_SENT = "Notification sent"
+    ERROR = "Error sending notification"
 
 
 class NotifyService:
@@ -63,37 +70,33 @@ class NotifyService:
 
             rows = await conn.fetch('''
                 SELECT
-                    id,
-                    plate_number,
-                    plate_bbox,
-                    plate_confidence,
-                    vehicle_bbox,
-                    image_path,
-                    detection_time,
-                    direction
-                FROM vehicles
-                WHERE vehicle_type NOT IN ('Motorcycle') AND id > $1
-                ORDER BY id ASC
+                    v.id,
+                    v.plate_number,
+                    v.plate_bbox,
+                    v.plate_confidence,
+                    v.vehicle_bbox,
+                    v.image_path,
+                    v.detection_time,
+                    v.direction,
+                    v.allow_user
+                FROM vehicles v
+                WHERE v.vehicle_type NOT IN ('Motorcycle') AND v.id > $1
+                ORDER BY v.id ASC
             ''', self.last_processed_id)
 
             records = []
             for row in rows:
-                # Handle datetime serialization
-                detection_time = row['detection_time']
-                if isinstance(detection_time, datetime):
-                    detection_time = detection_time.isoformat()
-
-                record = {
+                records.append({
                     'id': row['id'],
                     'plate_number': row['plate_number'],
                     'plate_bbox': row['plate_bbox'],
                     'plate_confidence': row['plate_confidence'],
                     'vehicle_bbox': row['vehicle_bbox'],
                     'image_path': row['image_path'],
-                    'detection_time': detection_time,
-                    'direction': row['direction']
-                }
-                records.append(record)
+                    'detection_time': row['detection_time'],
+                    'direction': row['direction'],
+                    'allow_user': row['allow_user']
+                })
 
             return records
         except Exception as e:
@@ -141,7 +144,7 @@ class NotifyService:
             logger.error(f"Error processing image: {str(e)}")
             raise
 
-    async def send_notification(self, record: Dict) -> bool:
+    async def send_notification(self, record: Dict) -> NotificationStatus:
         """
         Send a notification with the processed image.
 
@@ -149,25 +152,18 @@ class NotifyService:
             record: Vehicle record data
 
         Returns:
-            True if notification was sent successfully, False otherwise
+            A status of the notification
         """
         try:
-            # Process the image
-            image_bytes = self.process_image(
-                record['image_path'],
-                record['vehicle_bbox'],
-                record['plate_bbox']
-            )
+            is_allow_user = record.get('allow_user', False)
+            if is_allow_user:
+                # this is an allowed car entering the garage
+                # we don't need to notify about this
+                self.last_processed_id = record['id']
+                self._save_last_processed_id(record['id'])
+                return NotificationStatus.NO_NOTIFICATION
 
-            # Format the detection time
-            if isinstance(record['detection_time'], str):
-                detection_time = datetime.fromisoformat(record['detection_time'])
-            else:
-                detection_time = record['detection_time']
-            time_str = detection_time.strftime("%Y-%m-%d %H:%M:%S")
-
-            # Prepare the caption
-            caption = "🚗 Vehicle detected\n"
+            caption = "🚫 Car is not in allowlist\n"
 
             # Add direction if available
             direction = record.get('direction', '')
@@ -190,7 +186,15 @@ class NotifyService:
             else:
                 caption += "🚨🚨🚨 No license plate detected 🚨🚨🚨\n"
 
+            time_str = record['detection_time'].strftime("%Y-%m-%d %H:%M:%S")
             caption += f"⏱️ Time: {time_str}"
+
+            # Process the image
+            image_bytes = self.process_image(
+                record['image_path'],
+                record['vehicle_bbox'],
+                record['plate_bbox']
+            )
 
             error_count = 0
             for user_id in settings.authorized_users:
@@ -220,14 +224,14 @@ class NotifyService:
                 if error_count > 0:
                     msg += f" ({error_count} errors)"
                 logger.info(msg)
-                return True
+                return NotificationStatus.NOTIFICATION_SENT
             else:
                 logger.error(f"Failed to send notification to any users for record {record['id']}")
-                return False
+                return NotificationStatus.ERROR
 
         except Exception as e:
             logger.error(f"Error sending notification: {str(e)}")
-            return False
+            return NotificationStatus.ERROR
 
     async def run(self):
         """
