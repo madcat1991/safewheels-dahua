@@ -6,3 +6,4 @@ __pycache__/
 *.env.local
 last_processed_id.txt
 vehicle_images/
+.DS_Store
